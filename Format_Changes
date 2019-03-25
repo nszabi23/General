@@ -1,0 +1,85 @@
+Sub Format_Changes()
+
+    Dim Lastrow As Long
+    Dim DH_count As Integer
+    Dim Values_LN As Integer
+
+'Remove blank rows and columns
+    
+    ActiveSheet.Select
+
+    Sheets(1).Range("A1:A11").SpecialCells(xlCellTypeBlanks).EntireRow.Delete
+
+    Sheets(1).Range("A:A").SpecialCells(xlCellTypeBlanks).EntireColumn.Delete
+    Sheets(1).Range("C:D").SpecialCells(xlCellTypeBlanks).EntireColumn.Delete
+    Sheets(1).Range("D:E").SpecialCells(xlCellTypeBlanks).EntireColumn.Delete
+    
+    Values_LN = Application.WorksheetFunction.CountA(Range("L:L"))
+
+    If Values_LN < 10 Then
+    
+        Sheets(1).Range("L:L").EntireColumn.Delete
+        Sheets(1).Range("M:M").EntireColumn.Delete
+    
+    End If
+
+    
+        Lastrow = Sheets(1).Cells(Sheets(1).Rows.Count, "B").End(xlUp).Row
+
+        Total_range = "A1" & ":" & "A" & Lastrow
+        DH_Range = "A2" & ":" & "A" & Lastrow
+
+    Sheets(1).Range(Total_range).SpecialCells(xlCellTypeBlanks).EntireRow.Delete
+
+'Delete not needed columns
+    
+DH_count = Application.WorksheetFunction.CountIf(Range("A2:A" & Lastrow), "User")
+    
+    Do Until DH_count = 1
+    
+        DH_count = Application.WorksheetFunction.CountIf(Range("A2:A" & Lastrow), "User")
+    
+        Sheets(1).Range(DH_Range).Find("User", , xlValues).EntireRow.Delete
+    
+    Loop
+    
+'Text to columns Dates
+    Columns("F:F").Select
+    
+    Selection.TextToColumns Destination:=Range("F1"), DataType:=xlDelimited, _
+        TextQualifier:=xlDoubleQuote, ConsecutiveDelimiter:=False, Tab:=True, _
+        Semicolon:=False, Comma:=False, Space:=False, Other:=False, FieldInfo _
+        :=Array(1, 4), TrailingMinusNumbers:=True
+        
+    
+    Columns("N:N").Select
+    
+    Selection.TextToColumns Destination:=Range("N1"), DataType:=xlDelimited, _
+        TextQualifier:=xlDoubleQuote, ConsecutiveDelimiter:=False, Tab:=True, _
+        Semicolon:=False, Comma:=False, Space:=False, Other:=False, FieldInfo _
+        :=Array(1, 4), TrailingMinusNumbers:=True
+    
+    
+    Columns("O:O").Select
+    
+    Selection.TextToColumns Destination:=Range("O1"), DataType:=xlDelimited, _
+        TextQualifier:=xlDoubleQuote, ConsecutiveDelimiter:=False, Tab:=True, _
+        Semicolon:=False, Comma:=False, Space:=False, Other:=False, FieldInfo _
+        :=Array(1, 4), TrailingMinusNumbers:=True
+    
+    
+    Columns("P:P").Select
+    
+    Selection.TextToColumns Destination:=Range("P1"), DataType:=xlDelimited, _
+        TextQualifier:=xlDoubleQuote, ConsecutiveDelimiter:=False, Tab:=True, _
+        Semicolon:=False, Comma:=False, Space:=False, Other:=False, FieldInfo _
+        :=Array(1, 4), TrailingMinusNumbers:=True
+
+
+'Rename Columns
+
+Range("F2").Value = "Change Date"
+Range("G2").Value = "Change Time"
+
+End Sub
+
