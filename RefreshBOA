@@ -1,0 +1,19 @@
+Sub RefreshBOA()
+
+Dim answer As Integer
+
+answer = MsgBox("Do you want to update both table", vbYesNo + vbQuestion, "Refresh Data")
+
+  If answer = vbYes Then
+
+    Dim lResult As Variant
+
+    lResult = Application.Run("SAPExecuteCommand", "Refresh", "ALL")
+
+  Else
+
+  lResult = Application.Run("SAPExecuteCommand", "Refresh", "DS_1")
+
+  End If
+
+End Sub
