@@ -1,0 +1,394 @@
+Global InputArray() As Variant, WUCountsArray() As Variant, WUInfoArray() As Variant, TotalToDO As Long, StillToDO As Long, addinOK As Boolean
+
+Function EnableAnalysisOffice()
+Dim addin As COMAddIn
+On Error GoTo Einde
+
+addinOK = False
+
+For Each addin In Application.COMAddIns
+Debug.Print addin.progID & "; " & addin.Connect
+    
+  If addin.progID = "SapExcelAddIn" Then
+    If addin.Connect = False Then addin.Connect = True
+    addinOK = True
+  End If
+  Next
+Exit Function
+
+Einde:
+addinOK = False
+On Error GoTo 0
+
+End Function
+Public Function BIRefresh(str As String)
+
+If str = "Off" Then
+    Call Application.Run("SAPSetRefreshBehaviour", "Off")
+    Call Application.Run("SAPExecuteCommand", "PauseVariableSubmit", "On")
+ElseIf str = "On" Then
+    Call Application.Run("SAPExecuteCommand", "PauseVariableSubmit", "Off")
+    Call Application.Run("SAPSetRefreshBehaviour", "On")
+End If
+
+End Function
+
+Public Function BIRefreshNow(DS As String)
+Dim lResult As Long
+
+' DS could be "ALL" or DS_1;DS_2;...
+
+
+Call Application.Run("SAPSetRefreshBehaviour", "Off")
+lResult = Application.Run("SAPExecuteCommand", "refresh", DS)
+Call Application.Run("SAPSetRefreshBehaviour", "On")
+
+If lResult = 0 Then MsgBox "failed to refresh " & DS
+
+
+End Function
+
+Public Function Set_ItemInfovalues(GPClist As String)
+Dim LastColumn As Long, LastRow As Long
+Dim WorkingColumn As Long, WorkingRow As Long
+Dim rng As Range
+
+
+With Worksheets("Output ItemInfo")
+LastColumn = .Cells(2, .Columns.Count).End(xlToLeft).Column
+LastRow = .Range("B" & Rows.Count).End(xlUp).Row
+
+Application.Calculation = xlCalculationManual
+For WorkingRow = 3 To LastRow
+  If Trim(.Cells(WorkingRow, 1).Value) = "Update" Then
+    If InStr(GPClist, Trim(.Cells(WorkingRow, 2).Value)) > 0 Then
+      .Cells(WorkingRow, 1).Value = "Update in Progress"
+      For WorkingColumn = 3 To LastColumn
+        .Cells(WorkingRow, WorkingColumn).Formula = "=VLOOKUP(INDIRECT(ADDRESS(ROW(),2)),SAPCrosstab2,INDIRECT(ADDRESS(1,COLUMN())),FALSE)"
+      Next
+    End If
+  End If
+Next
+Application.Calculation = xlCalculationAutomatic
+.Calculate
+
+' make values
+  .Range(.Cells(3, 1), .Cells(LastRow, LastColumn)).Copy
+  .Range("A3").PasteSpecial Paste:=xlPasteValues
+  Application.CutCopyMode = False
+
+
+End With
+
+End Function
+Public Function xxGetSSBIItemInfo(InputArray As Variant)
+Dim GPClist As String, IndexCnt As Long
+Dim BatchLimit As Long, Currentlimit As Long
+
+BatchLimit = 2: Currentlimit = 0
+GPClist = ""
+
+' start Process -----------------------------------------------
+Currentlimit = Currentlimit + BatchLimit
+For IndexCnt = 1 To UBound(InputArray)
+  GPClist = GPClist & InputArray(IndexCnt) & ";"
+' if batchlimit is reached get data and save it
+  If IndexCnt = Currentlimit Or IndexCnt = UBound(InputArray) Then
+    If Left(GPClist, 1) = ";" Then GPClist = Right(GPClist, Len(GPClist) - 1)
+    If Right(GPClist, 1) = ";" Then GPClist = Left(GPClist, Len(GPClist) - 1)
+    
+'refresh Item Info
+    BIRefresh ("Off")
+    Call Application.Run("SAPSetVariable", "GFCMS_COMPGRPCODE", GPClist, "INPUT_STRING", "DS_2")
+    BIRefresh ("On")
+    BIRefreshNow ("DS_2")
+' Store values
+    Call Set_ItemInfovalues(GPClist)
+    Currentlimit = Currentlimit + BatchLimit
+    GPClist = ""
+  
+  End If
+Next IndexCnt
+
+End Function
+
+Public Function xxGetSSBI_WUInfo(InputArray As Variant)
+Dim GPClist As String, IndexCnt As Long
+Dim BatchLimit As Long, Currentlimit As Long
+
+
+Debug.Print "Start Inputarray"
+For x = 1 To UBound(InputArray, 2)
+Debug.Print InputArray(x, 2)
+Next
+Debug.Print "END Inputarray"
+
+BatchLimit = 4444: Currentlimit = 0
+GPClist = ""
+' start Process -----------------------------------------------
+For IndexCnt = 1 To UBound(InputArray, 2)
+  GPClist = GPClist & Trim(" " & InputArray(1, IndexCnt)) & ";"
+  Currentlimit = Currentlimit + InputArray(2, IndexCnt)
+' if limit is reached get data and save it
+  If Currentlimit >= BatchLimit Or IndexCnt = UBound(InputArray, 2) Then
+    If Left(GPClist, 1) = ";" Then GPClist = Right(GPClist, Len(GPClist) - 1)
+    If Right(GPClist, 1) = ";" Then GPClist = Left(GPClist, Len(GPClist) - 1)
+
+
+'refresh Item Info
+    BIRefresh ("Off")
+    Call Application.Run("SAPSetVariable", "GFMVS_WU_INGREDIENTS", GPClist, "INPUT_STRING", "DS_1")
+    BIRefresh ("On")
+    Call Application.Run("SAPSetFilter", "DS_1", "0PLANT", "#;MA01", "INPUT_STRING")
+    BIRefreshNow ("DS_2")
+' Store values
+    Call Set_WUValues(InputArray)
+    Currentlimit = 0
+    GPClist = ""
+  End If
+
+Next IndexCnt
+
+
+End Function
+Public Function Set_WUValues(SourceArray As Variant)
+Dim rng As Range, columnNOTfound As Boolean
+Dim RowNbr As Long, LastRow As Long, LastColumn As Long
+Dim C_Ingredient As Long, C_Flavor As Long, C_FlavorUploadDate As Long, C_ProcessCode As Long
+Dim C_DistPlant As Long, C_Ingredient_qty As Double, C_ManufLast12m As Double
+Dim currentING As String, currentFV As String, n As Long, M As Long, IngQty As Double, LastArrayRecord As Long
+Dim StrVar As String, NmbVar As Long
+
+Dim InputArray() As Variant, OutputArray() As Variant
+' determine column positions
+
+
+With Worksheets("SSBI WUInfo")
+columnNOTfound = False
+
+' find the columns containing 'Ingredient'
+Set rng = .Range("A12:ZZ1").Find("Ingredient", , xlValues, xlWhole)
+If Not rng Is Nothing Then
+C_Ingredient = rng.Column
+Else
+columnNOTfound = True
+End If
+
+' find the columns containing 'Flavor'
+Set rng = .Range("A12:ZZ1").Find("Flavor", , xlValues, xlWhole)
+If Not rng Is Nothing Then
+C_Flavor = rng.Column
+Else
+columnNOTfound = True
+End If
+
+' find the columns containing 'Flavor Upload Date'
+Set rng = .Range("A12:ZZ1").Find("Flavor Upload Date", , xlValues, xlWhole)
+If Not rng Is Nothing Then
+C_FlavorUploadDate = rng.Column
+Else
+columnNOTfound = True
+End If
+
+' find the columns containing 'Process Code'
+Set rng = .Range("A12:ZZ1").Find("Process Code", , xlValues, xlWhole)
+If Not rng Is Nothing Then
+C_ProcessCode = rng.Column
+Else
+columnNOTfound = True
+End If
+
+' find the columns containing 'Dist. Plant'
+Set rng = .Range("A12:ZZ1").Find("Dist. Plant", , xlValues, xlWhole)
+If Not rng Is Nothing Then
+C_DistPlant = rng.Column
+Else
+columnNOTfound = True
+End If
+
+' find the columns containing 'Ingredient qty'
+Set rng = .Range("A12:ZZ1").Find("Ingredient qty", , xlValues, xlWhole)
+If Not rng Is Nothing Then
+C_Ingredient_qty = rng.Column
+Else
+columnNOTfound = True
+End If
+
+' find the columns containing 'Manufacturing last 12 months'
+Set rng = .Range("A12:ZZ1").Find("Manufacturing" & Chr(10) & "last 12 months", , xlValues, xlWhole)
+If Not rng Is Nothing Then
+C_ManufLast12m = rng.Column
+Else
+columnNOTfound = True
+End If
+
+LastColumn = .Cells(1, .Columns.Count).End(xlToLeft).Column
+LastRow = .Range("B" & Rows.Count).End(xlUp).Row
+
+'C_Ingredient As Long, C_Flavor As Long, C_FlavorUploadDate As Long, C_ProcessCode As Long
+'C_DistPlant As Long, C_Ingredient_qty, C_ManufLast12m
+' combine all values into one array
+ReDim InputArray(7, 1)
+For RowNbr = 2 To LastRow
+  If .Cells(RowNbr, C_DistPlant) = "MA01" Then
+    currentING = .Cells(RowNbr, C_Ingredient).Value
+    currentFV = .Cells(RowNbr, C_Flavor).Value
+    n = 2: IngQty = 0
+    Do
+      If (.Cells(n, C_Ingredient).Value = currentING) And (.Cells(n, C_Flavor).Value = currentFV) And (.Cells(n, C_DistPlant).Value = "#") Then
+        IngQty = .Cells(n, C_Ingredient_qty).Value
+        End If
+      n = n + 1
+  Loop Until IngQty > 0 Or n > LastRow
+  
+  LastArrayRecord = UBound(InputArray, 2)
+  InputArray(1, LastArrayRecord) = .Cells(RowNbr, C_Ingredient).Value
+  InputArray(2, LastArrayRecord) = .Cells(RowNbr, C_Flavor).Value
+  InputArray(3, LastArrayRecord) = .Cells(RowNbr, C_FlavorUploadDate).Value
+  InputArray(4, LastArrayRecord) = .Cells(RowNbr, C_ProcessCode).Value
+  InputArray(5, LastArrayRecord) = .Cells(RowNbr, C_DistPlant).Value
+  InputArray(6, LastArrayRecord) = IngQty
+  InputArray(7, LastArrayRecord) = .Cells(RowNbr, C_ManufLast12m).Value
+  ReDim Preserve InputArray(0 To 7, 0 To (LastArrayRecord + 1))
+  End If
+Next RowNbr
+
+End With
+
+
+' consolidate
+'define array to store calculationResults
+' 0: ING code
+' 1: SL site Mako
+' 2: SL site Mako < 1 year
+' 3: SL site Mako < 2 year
+' 4: SL site Mako < 3 year
+' 5: SL site Mako Sold last 12 m
+' 6: SL site Mako P00 Sold last 12 m
+' 7: SL site Mako K00 Sold last 12 m
+' 8: SL site Mako PCD Total Usage  (qty* manuf/1000)
+' 9: Min usage level in P00
+'10: Max usage level in P00
+'11: Min usage level in K00
+'12: Max usage level in K00
+currentING = "": LastArrayRecord = 0
+For n = 1 To UBound(InputArray, 2)
+If currentING <> InputArray(1, n) Then
+  currentING = InputArray(1, n)
+  LastArrayRecord = LastArrayRecord + 1
+  ReDim Preserve OutputArray(0 To 12, 0 To LastArrayRecord)
+  OutputArray(0, LastArrayRecord) = currentING
+  For M = 1 To UBound(OutputArray, 1)
+    OutputArray(M, LastArrayRecord) = 0
+    OutputArray(9, LastArrayRecord) = 1111
+    OutputArray(11, LastArrayRecord) = 1111
+    
+  Next M
+  End If
+  
+    If InputArray(5, n) = "MA01" Then
+      ' add figure 1
+      OutputArray(1, LastArrayRecord) = OutputArray(1, LastArrayRecord) + 1
+      End If
+    If InputArray(5, n) = "MA01" Then
+      ' add figure 2,3,4
+      StrVar = InputArray(3, n)
+      NmbVar = Int((Date - DateSerial(Right(StrVar, 4), Mid(StrVar, 4, 2), Left(StrVar, 2))) / 365)
+      If NmbVar = 0 Then OutputArray(2, LastArrayRecord) = OutputArray(2, LastArrayRecord) + 1
+      If NmbVar = 1 Then OutputArray(3, LastArrayRecord) = OutputArray(3, LastArrayRecord) + 1
+      If NmbVar = 2 Then OutputArray(4, LastArrayRecord) = OutputArray(4, LastArrayRecord) + 1
+      End If
+    If InputArray(5, n) = "MA01" Then
+      ' add figure 5,6,7
+      StrVar = InputArray(4, n)
+      If InputArray(7, n) > 0 Then
+        OutputArray(5, LastArrayRecord) = OutputArray(5, LastArrayRecord) + 1
+        If StrVar = "P00" Then OutputArray(6, LastArrayRecord) = OutputArray(6, LastArrayRecord) + 1
+        If StrVar = "K00" Then OutputArray(7, LastArrayRecord) = OutputArray(7, LastArrayRecord) + 1
+        End If
+      End If
+    If InputArray(5, n) = "MA01" Then
+      ' add consumption 8
+      OutputArray(8, LastArrayRecord) = OutputArray(8, LastArrayRecord) + (InputArray(7, n) * InputArray(6, n))
+      End If
+    If InputArray(5, n) = "MA01" And InputArray(4, n) = "P00" Then
+      ' Add Min and max for P00 (9 and 10)
+      NmbVar = InputArray(6, n)
+      If NmbVar <> 0 And NmbVar < OutputArray(9, LastArrayRecord) Then OutputArray(9, LastArrayRecord) = NmbVar
+      If NmbVar <> 0 And NmbVar > OutputArray(10, LastArrayRecord) Then OutputArray(10, LastArrayRecord) = NmbVar
+     ' Debug.Print OutputArray(0, LastArrayRecord), NmbVar, OutputArray(9, LastArrayRecord), OutputArray(10, LastArrayRecord)
+      End If
+    If InputArray(5, n) = "MA01" And InputArray(4, n) = "K00" Then
+      ' Add Min and max for K00 (11 and 12)
+      NmbVar = InputArray(6, n)
+      If NmbVar <> 0 And NmbVar < OutputArray(11, LastArrayRecord) Then OutputArray(11, LastArrayRecord) = NmbVar
+      If NmbVar <> 0 And NmbVar > OutputArray(12, LastArrayRecord) Then OutputArray(12, LastArrayRecord) = NmbVar
+      End If
+Next n
+
+' placing the values into the worksheet
+
+With Worksheets("Output ItemInfo")
+LastRow = .Range("B" & Rows.Count).End(xlUp).Row
+' SL Mako
+For RowNbr = 2 To LastRow
+  If .Cells(RowNbr, 1).Value = "Update in Progress" Then
+  '   do the stuff
+  
+  
+  
+  
+  Debug.Print .Cells(RowNbr, 2).Value
+  End If
+Next
+
+
+
+
+
+
+'For N = 1 To UBound(OutputArray, 2)
+
+'Debug.Print OutputArray(0, N) & "; " & OutputArray(9, N) & "; " & OutputArray(10, N) & "; " & OutputArray(11, N) & "; " & OutputArray(12, N)
+'Next
+
+
+'define array to store calculationResults
+' 1: SL site Mako
+' 2: SL site Mako < 1 year
+' 3: SL site Mako < 2 year
+' 4: SL site Mako < 3 year
+' 5: SL site Mako Sold last 12 m
+' 6: SL site Mako P00 Sold last 12 m
+' 7: SL site Mako K00 Sold last 12 m
+' 8: SL site Mako PCD Total Usage  (qty* manuf/1000)
+' 9: Min usage level in P00
+'10: Max usage level in P00
+'11: Min usage level in K00
+'12: Max usage level in K00
+
+
+
+
+End With
+End Function
+
+
+End Function
+
+
+Public Function Columnnbr(wrksheet As String, header As String) As Long
+With Worksheets(wrksheet)
+' find the columns containing SL EAME
+Set rng = .Range("B2:ZZ2").Find(header, , xlValues, xlWhole)
+If Not rng Is Nothing Then
+Columnnbr = rng.Column
+Else
+Columnnbr = 0
+End If
+
+If Columnnbr = 0 Then MsgBox ("cannot find column: " & header), vbCritical
+End With
+
+End Function
+
