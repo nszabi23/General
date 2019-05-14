@@ -1,0 +1,49 @@
+Sub Main()
+'Selecting WB and materials
+
+Dim lastrow As Integer
+Dim loops As Integer
+Dim Ingredients As Integer
+Dim x As String
+Dim lResult As Long
+
+ThisWorkbook.Sheets("Ingredients").Select
+
+lastrow = ThisWorkbook.Sheets("Ingredients").Cells(Sheets("Ingredients").Rows.Count, "A").End(xlUp).Row
+
+loops = WorksheetFunction.RoundUp(lastrow / 3, 0)
+
+'For loop to loop through material list by 3 steps
+For Ingredients = 1 To 2
+
+    If Ingredients = 1 Then
+    
+        
+'        RangeToString (Sheets("Ingredients").Range(Cells(Ingredients + 1, 1), Cells(Ingredients + 3, 1)))
+           
+        x = RangeToString(Sheets("Ingredients").Range(Cells(Ingredients + 1, 1), Cells(Ingredients + 3, 1)))
+        
+        Debug.Print (x)
+    
+    
+    Else
+        
+        ThisWorkbook.Sheets("Ingredients").Select
+        
+    
+        x = RangeToString(Sheets("Ingredients").Range(Cells(Ingredients * 2 + Ingredients - 1, 1), Cells(Ingredients * 3 + 1, 1)))
+        
+        Debug.Print (x)
+        
+    End If
+    
+    lResult = Application.Run("SAPSetVariable", "GFMVS_WU_INGREDIENTS", x, "INPUT_STRING", "DS_1")
+    
+    Call UpdateSalesImpact
+    
+Next
+
+
+
+
+End Sub
