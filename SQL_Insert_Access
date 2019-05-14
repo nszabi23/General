@@ -1,0 +1,19 @@
+Sub SQL_InsertIntoTbl()
+
+Dim cn As Object
+
+    Set cn = CreateObject("ADODB.Connection")
+  
+    dbPath = "\\gBTcsm0010.emea.givaudan.com\HomeDirS$\kompogat\Desktop\Buchu Oil Monitor.accdb"
+      
+    scn = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & dbPath & ";Persist Security Info=False;"
+     
+    cn.Open scn
+    
+    sql = "INSERT INTO QueryName SELECT * FROM [Sheet1$] IN '" & ThisWorkbook.FullName & "' 'Excel 8.0;'"
+    
+    cn.Execute sql
+   
+    Set cn = Nothing
+    
+End Sub
