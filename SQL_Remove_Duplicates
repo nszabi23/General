@@ -1,0 +1,8 @@
+SELECT First(tbl_Usage_Total.[Ingredient]) AS [Ingredient Field], First(tbl_Usage_Total.[Ingredient Description]) AS [Ingredient Description Field], First(tbl_Usage_Total.[Flavor]) AS [Flavor Field], First(tbl_Usage_Total.[Flavour Description]) AS [Flavour Description Field], First(tbl_Usage_Total.[Ingredient qty]) AS [Ingredient qty Field] INTO temp_tbl_Delete
+FROM tbl_Usage_Total
+GROUP BY tbl_Usage_Total.[Ingredient], tbl_Usage_Total.[Ingredient Description], tbl_Usage_Total.[Flavor], tbl_Usage_Total.[Flavour Description], tbl_Usage_Total.[Ingredient qty]
+HAVING (((Count(tbl_Usage_Total.[Ingredient]))>1) AND ((Count(tbl_Usage_Total.[Ingredient qty]))>1));
+
+DELETE DISTINCTROW  tbl_Usage_Total.* 
+FROM  tbl_Usage_Total INNER JOIN temp_tbl_Delete
+ON tbl_Usage_Total.[Ingredient] = temp_tbl_Delete.[Ingredient] and tbl_Usage_Total.[Flavor] = temp_tbl_Delete.[Flavor]
